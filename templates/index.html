@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block conteudo %}
+
+<div class="cabecalho-pagina">
+  <div>
+    <h1>Painel geral</h1>
+    <p class="suave pequeno" style="margin:0">{{ totais.qtd_despesas }} despesa(s) cadastrada(s)</p>
+  </div>
+  <a href="{{ url_for('nova_despesa') }}"><button>+ Nova despesa</button></a>
+</div>
+
+<div class="grid-cards">
+  <div class="stat">
+    <div class="rotulo">Total da reforma</div>
+    <div class="valor">{{ totais.total|brl }}</div>
+  </div>
+  <div class="stat verde">
+    <div class="rotulo">Já pago</div>
+    <div class="valor">{{ totais.pago|brl }}</div>
+  </div>
+  <div class="stat vermelho">
+    <div class="rotulo">Falta pagar</div>
+    <div class="valor">{{ totais.saldo|brl }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Despesas</h2>
+  {% if despesas %}
+  <div class="tabela-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Despesa</th>
+        <th>Parcelas</th>
+        <th class="num">Total</th>
+        <th class="num">Pago</th>
+        <th class="num">Falta</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in despesas %}
+      {% set saldo = d.valor_total - d.pago %}
+      <tr>
+        <td>
+          <a href="{{ url_for('detalhe_despesa', despesa_id=d.id) }}"><strong>{{ d.nome }}</strong></a>
+          {% if d.categoria %}<div class="pequeno suave">{{ d.categoria }}</div>{% endif %}
+          <div class="barra"><i style="width: {{ (100 if d.valor_total == 0 else (d.pago * 100 / d.valor_total))|round(1) }}%"></i></div>
+        </td>
+        <td>{{ d.qtd_parcelas }}x</td>
+        <td class="num">{{ d.valor_total|brl }}</td>
+        <td class="num">{{ d.pago|brl }}</td>
+        <td class="num">{{ saldo|brl }}</td>
+        <td>
+          {% if saldo <= 0 %}<span class="tag ok">Quitada</span>
+          {% elif d.pago > 0 %}<span class="tag parcial">Parcial</span>
+          {% else %}<span class="tag aberta">Em aberto</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="vazio">Nenhuma despesa ainda. Comece por <a href="{{ url_for('nova_despesa') }}">criar a primeira</a>.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Quanto cada pessoa já pagou (total)</h2>
+  {% if por_pessoa %}
+  <table>
+    <thead><tr><th>Pessoa</th><th class="num">Lançamentos</th><th class="num">Total pago</th><th class="num">% do pago</th></tr></thead>
+    <tbody>
+      {% for p in por_pessoa %}
+      <tr>
+        <td><a href="{{ url_for('detalhe_pessoa', pessoa_id=p.id) }}">{{ p.nome }}</a></td>
+        <td class="num">{{ p.qtd }}</td>
+        <td class="num"><strong>{{ p.total|brl }}</strong></td>
+        <td class="num">{{ (0 if totais.pago == 0 else p.total * 100 / totais.pago)|round(1) }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="vazio">Nenhuma pessoa cadastrada ainda. <a href="{{ url_for('pessoas') }}">Cadastrar pessoas</a>.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block conteudo %}
+
+<h1>Nova despesa</h1>
+<p class="suave pequeno">Ex.: “Pintor”, R$ 3.000,00 em 2 parcelas.</p>
+
+<div class="card" style="max-width:640px">
+  <form method="post">
+    <div class="campo" style="margin-bottom:14px">
+      <label for="nome">Nome da despesa *</label>
+      <input id="nome" name="nome" required placeholder="Pintor" autofocus>
+    </div>
+
+    <div class="campo" style="margin-bottom:14px">
+      <label for="categoria">Categoria (opcional)</label>
+      <input id="categoria" name="categoria" placeholder="Mão de obra, Material, Móveis...">
+    </div>
+
+    <div class="duas-colunas" style="margin-bottom:14px">
+      <div class="campo">
+        <label for="valor_total">Valor total *</label>
+        <input id="valor_total" name="valor_total" required placeholder="3000,00" inputmode="decimal">
+      </div>
+      <div class="campo">
+        <label for="qtd_parcelas">Nº de parcelas *</label>
+        <input id="qtd_parcelas" name="qtd_parcelas" type="number" min="1" max="120" value="1" required>
+      </div>
+    </div>
+
+    <div class="campo" style="margin-bottom:14px">
+      <label for="valor_parcela">Valor da parcela (opcional)</label>
+      <input id="valor_parcela" name="valor_parcela" placeholder="deixe vazio para dividir o total igualmente" inputmode="decimal">
+      <span class="pequeno suave">Se preenchido, a diferença de arredondamento vai para a última parcela. Você também pode editar cada parcela depois.</span>
+    </div>
+
+    <div class="campo" style="margin-bottom:18px">
+      <label for="observacao">Observação (opcional)</label>
+      <textarea id="observacao" name="observacao" rows="2"></textarea>
+    </div>
+
+    <button type="submit">Criar despesa</button>
+    <a href="{{ url_for('index') }}"><button type="button" class="secundario">Cancelar</button></a>
+  </form>
+</div>
+
+{% endblock %}

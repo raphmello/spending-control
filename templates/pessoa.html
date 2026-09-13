@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block titulo %}{{ pessoa.nome }} — Controle da Reforma{% endblock %}
+{% block conteudo %}
+
+<h1>{{ pessoa.nome }}</h1>
+
+<div class="grid-cards">
+  <div class="stat verde">
+    <div class="rotulo">Total pago (todas as despesas)</div>
+    <div class="valor">{{ total|brl }}</div>
+  </div>
+  <div class="stat">
+    <div class="rotulo">Despesas em que participou</div>
+    <div class="valor">{{ por_despesa|length }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Pago por despesa</h2>
+  {% if por_despesa %}
+  <table>
+    <thead><tr><th>Despesa</th><th class="num">Pagou</th></tr></thead>
+    <tbody>
+      {% for d in por_despesa %}
+      <tr>
+        <td><a href="{{ url_for('detalhe_despesa', despesa_id=d.id) }}">{{ d.nome }}</a></td>
+        <td class="num"><strong>{{ d.total|brl }}</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="vazio">Nenhum pagamento lançado para esta pessoa.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Todos os lançamentos</h2>
+  {% if lancamentos %}
+  <div class="tabela-scroll">
+  <table>
+    <thead><tr><th>Data</th><th>Despesa</th><th>Parcela</th><th class="num">Valor</th><th>Obs.</th></tr></thead>
+    <tbody>
+      {% for l in lancamentos %}
+      <tr>
+        <td>{{ l.data|data_br }}</td>
+        <td><a href="{{ url_for('detalhe_despesa', despesa_id=l.despesa_id) }}">{{ l.despesa }}</a></td>
+        <td>{{ l.parcela_numero }}</td>
+        <td class="num">{{ l.valor|brl }}</td>
+        <td class="pequeno suave">{{ l.observacao or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="vazio">Sem lançamentos.</p>{% endif %}
+</div>
+
+<p><a href="{{ url_for('pessoas') }}">← voltar para pessoas</a></p>
+
+{% endblock %}

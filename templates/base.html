@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Controle da Reforma{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧱</text></svg>">
+</head>
+<body>
+<header class="topo">
+  <div class="wrap topo-inner">
+    <a class="marca" href="{{ url_for('index') }}">🧱 Controle da Reforma</a>
+    <nav>
+      <a href="{{ url_for('index') }}">Painel</a>
+      <a href="{{ url_for('nova_despesa') }}">Nova despesa</a>
+      <a href="{{ url_for('pessoas') }}">Pessoas</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  {% with mensagens = get_flashed_messages(with_categories=true) %}
+    {% if mensagens %}
+      <div class="flashes">
+      {% for categoria, msg in mensagens %}
+        <div class="flash {{ categoria }}">{{ msg }}</div>
+      {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% block conteudo %}{% endblock %}
+</main>
+
+<footer class="wrap rodape">Dados salvos localmente em <code>reforma.db</code></footer>
+</body>
+</html>

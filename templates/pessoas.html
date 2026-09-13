@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block titulo %}Pessoas — Controle da Reforma{% endblock %}
+{% block conteudo %}
+
+<h1>Pessoas</h1>
+<p class="suave pequeno">Quem participa do rateio da reforma.</p>
+
+<div class="card">
+  <h2>Cadastrar pessoa</h2>
+  <form method="post" class="linha">
+    <div class="campo cresce">
+      <label for="nome">Nome</label>
+      <input id="nome" name="nome" required placeholder="Raphael">
+    </div>
+    <button type="submit">Adicionar</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Cadastradas</h2>
+  {% if pessoas %}
+  <table>
+    <thead><tr><th>Nome</th><th class="num">Total pago</th><th>Status</th><th class="num">Ações</th></tr></thead>
+    <tbody>
+      {% for p in pessoas %}
+      {% set r = (resumo | selectattr('id', 'equalto', p.id) | list | first) %}
+      <tr>
+        <td><a href="{{ url_for('detalhe_pessoa', pessoa_id=p.id) }}"><strong>{{ p.nome }}</strong></a></td>
+        <td class="num">{{ (r.total if r else 0)|brl }}</td>
+        <td>{% if p.ativo %}<span class="tag ok">Ativa</span>{% else %}<span class="tag off">Inativa</span>{% endif %}</td>
+        <td class="num">
+          <form method="post" action="{{ url_for('alternar_pessoa', pessoa_id=p.id) }}" style="display:inline">
+            <button class="secundario" type="submit">{% if p.ativo %}Desativar{% else %}Reativar{% endif %}</button>
+          </form>
+          <form method="post" action="{{ url_for('remover_pessoa', pessoa_id=p.id) }}" style="display:inline"
+                onsubmit="return confirm('Excluir {{ p.nome }}?')">
+            <button class="link" type="submit">excluir</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="vazio">Nenhuma pessoa cadastrada.</p>
+  {% endif %}
+</div>
+
+<p><a href="{{ url_for('index') }}">← voltar ao painel</a></p>
+
+{% endblock %}

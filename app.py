@@ -1,0 +1,261 @@
+"""Controle de Despesas da Reforma — app web local (Flask + SQLite).
+
+Uso:
+    pip install flask
+    python app.py
+    abra http://127.0.0.1:5000
+"""
+
+import os
+import re
+import webbrowser
+from threading import Timer
+
+from flask import (Flask, flash, redirect, render_template, request, url_for)
+
+import db
+
+app = Flask(__name__)
+app.secret_key = "reforma-local"
+
+
+# --------------------------------------------------------------------------
+# Helpers de dinheiro (armazenado em centavos)
+# --------------------------------------------------------------------------
+
+def parse_money(texto):
+    """Aceita '3.000,00', '3000.00', '3000', 'R$ 1.500,50' -> centavos (int)."""
+    if texto is None:
+        raise ValueError("valor vazio")
+    s = str(texto).strip().replace("R$", "").replace(" ", "").replace(" ", "")
+    if not s:
+        raise ValueError("valor vazio")
+    s = re.sub(r"[^\d,.\-]", "", s)
+    if "," in s and "." in s:
+        # formato BR: ponto = milhar, vírgula = decimal
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
+    elif "," in s:
+        s = s.replace(",", ".")
+    valor = round(float(s) * 100)
+    if valor <= 0:
+        raise ValueError("valor deve ser maior que zero")
+    return int(valor)
+
+
+def brl(centavos):
+    if centavos is None:
+        centavos = 0
+    sinal = "-" if centavos < 0 else ""
+    centavos = abs(int(centavos))
+    inteiro, cents = divmod(centavos, 100)
+    return f"{sinal}R$ {inteiro:,.0f}".replace(",", ".") + f",{cents:02d}"
+
+
+def data_br(iso):
+    if not iso:
+        return "—"
+    partes = str(iso)[:10].split("-")
+    return "/".join(reversed(partes)) if len(partes) == 3 else iso
+
+
+app.jinja_env.filters["brl"] = brl
+app.jinja_env.filters["data_br"] = data_br
+
+
+@app.context_processor
+def inject_globals():
+    return {"pessoas_ativas": db.listar_pessoas(somente_ativas=True)}
+
+
+# --------------------------------------------------------------------------
+# Dashboard
+# --------------------------------------------------------------------------
+
+@app.route("/")
+def index():
+    return render_template(
+        "index.html",
+        totais=db.totais_gerais(),
+        despesas=db.listar_despesas(),
+        por_pessoa=db.resumo_pessoas_geral(),
+    )
+
+
+# --------------------------------------------------------------------------
+# Despesas
+# --------------------------------------------------------------------------
+
+@app.route("/despesas/nova", methods=["GET", "POST"])
+def nova_despesa():
+    if request.method == "POST":
+        try:
+            nome = (request.form.get("nome") or "").strip()
+            if not nome:
+                raise ValueError("informe o nome da despesa")
+            valor_total = parse_money(request.form.get("valor_total"))
+            qtd = int(request.form.get("qtd_parcelas") or 1)
+            if qtd < 1 or qtd > 120:
+                raise ValueError("quantidade de parcelas inválida")
+
+            valores = None
+            valor_parcela_txt = (request.form.get("valor_parcela") or "").strip()
+            if valor_parcela_txt:
+                # o usuário informou o valor da parcela: usa-o e joga a diferença na última
+                vp = parse_money(valor_parcela_txt)
+                valores = [vp] * qtd
+                diff = valor_total - vp * qtd
+                valores[-1] += diff
+                if valores[-1] <= 0:
+                    raise ValueError("valor da parcela incompatível com o valor total")
+
+            despesa_id = db.criar_despesa(
+                nome=nome,
+                valor_total=valor_total,
+                qtd_parcelas=qtd,
+                categoria=(request.form.get("categoria") or "").strip() or None,
+                observacao=(request.form.get("observacao") or "").strip() or None,
+                valores_parcelas=valores,
+            )
+            flash(f"Despesa “{nome}” criada.", "ok")
+            return redirect(url_for("detalhe_despesa", despesa_id=despesa_id))
+        except ValueError as e:
+            flash(f"Erro: {e}", "erro")
+    return render_template("nova_despesa.html")
+
+
+@app.route("/despesas/<int:despesa_id>")
+def detalhe_despesa(despesa_id):
+    despesa = db.obter_despesa(despesa_id)
+    if not despesa:
+        flash("Despesa não encontrada.", "erro")
+        return redirect(url_for("index"))
+    parcelas = db.listar_parcelas(despesa_id)
+    pago = sum(p["pago"] for p in parcelas)
+    return render_template(
+        "despesa.html",
+        despesa=despesa,
+        parcelas=parcelas,
+        pago=pago,
+        saldo=despesa["valor_total"] - pago,
+        pagamentos=db.listar_pagamentos_despesa(despesa_id),
+        por_pessoa=db.resumo_pessoas_despesa(despesa_id),
+    )
+
+
+@app.route("/despesas/<int:despesa_id>/excluir", methods=["POST"])
+def remover_despesa(despesa_id):
+    db.excluir_despesa(despesa_id)
+    flash("Despesa excluída.", "ok")
+    return redirect(url_for("index"))
+
+
+@app.route("/parcelas/<int:parcela_id>/editar", methods=["POST"])
+def editar_parcela(parcela_id):
+    despesa_id = int(request.form.get("despesa_id"))
+    try:
+        valor = parse_money(request.form.get("valor"))
+        venc = (request.form.get("vencimento") or "").strip() or None
+        db.atualizar_parcela(parcela_id, valor, venc)
+        flash("Parcela atualizada.", "ok")
+    except ValueError as e:
+        flash(f"Erro: {e}", "erro")
+    return redirect(url_for("detalhe_despesa", despesa_id=despesa_id))
+
+
+# --------------------------------------------------------------------------
+# Pagamentos
+# --------------------------------------------------------------------------
+
+@app.route("/pagamentos/novo", methods=["POST"])
+def novo_pagamento():
+    despesa_id = int(request.form.get("despesa_id"))
+    try:
+        parcela_id = int(request.form.get("parcela_id"))
+        pessoa_id = int(request.form.get("pessoa_id"))
+        valor = parse_money(request.form.get("valor"))
+        db.criar_pagamento(
+            parcela_id=parcela_id,
+            pessoa_id=pessoa_id,
+            valor=valor,
+            data=(request.form.get("data") or "").strip() or None,
+            observacao=(request.form.get("observacao") or "").strip() or None,
+        )
+        flash("Pagamento registrado.", "ok")
+    except (ValueError, TypeError) as e:
+        flash(f"Erro ao registrar pagamento: {e}", "erro")
+    return redirect(url_for("detalhe_despesa", despesa_id=despesa_id))
+
+
+@app.route("/pagamentos/<int:pagamento_id>/excluir", methods=["POST"])
+def remover_pagamento(pagamento_id):
+    despesa_id = db.excluir_pagamento(pagamento_id)
+    flash("Pagamento removido.", "ok")
+    if despesa_id:
+        return redirect(url_for("detalhe_despesa", despesa_id=despesa_id))
+    return redirect(url_for("index"))
+
+
+# --------------------------------------------------------------------------
+# Pessoas
+# --------------------------------------------------------------------------
+
+@app.route("/pessoas", methods=["GET", "POST"])
+def pessoas():
+    if request.method == "POST":
+        nome = (request.form.get("nome") or "").strip()
+        if nome:
+            try:
+                db.criar_pessoa(nome)
+                flash(f"Pessoa “{nome}” cadastrada.", "ok")
+            except Exception:
+                flash("Já existe uma pessoa com esse nome.", "erro")
+        return redirect(url_for("pessoas"))
+    return render_template(
+        "pessoas.html",
+        pessoas=db.listar_pessoas(),
+        resumo=db.resumo_pessoas_geral(),
+    )
+
+
+@app.route("/pessoas/<int:pessoa_id>/alternar", methods=["POST"])
+def alternar_pessoa(pessoa_id):
+    db.alternar_pessoa(pessoa_id)
+    return redirect(url_for("pessoas"))
+
+
+@app.route("/pessoas/<int:pessoa_id>/excluir", methods=["POST"])
+def remover_pessoa(pessoa_id):
+    if db.excluir_pessoa(pessoa_id):
+        flash("Pessoa excluída.", "ok")
+    else:
+        flash("Não dá para excluir: essa pessoa já tem pagamentos lançados. Desative-a.", "erro")
+    return redirect(url_for("pessoas"))
+
+
+@app.route("/pessoas/<int:pessoa_id>")
+def detalhe_pessoa(pessoa_id):
+    pessoa, por_despesa, lancamentos, total = db.extrato_pessoa(pessoa_id)
+    if not pessoa:
+        flash("Pessoa não encontrada.", "erro")
+        return redirect(url_for("pessoas"))
+    return render_template(
+        "pessoa.html",
+        pessoa=pessoa,
+        por_despesa=por_despesa,
+        lancamentos=lancamentos,
+        total=total,
+    )
+
+
+def abrir_navegador():
+    webbrowser.open("http://127.0.0.1:5000")
+
+
+if __name__ == "__main__":
+    db.init_db()
+    if os.environ.get("WERKZEUG_RUN_MAIN") != "true" and os.environ.get("REFORMA_NO_BROWSER") != "1":
+        Timer(1.0, abrir_navegador).start()
+    app.run(host="127.0.0.1", port=int(os.environ.get("PORT", 5000)), debug=False)

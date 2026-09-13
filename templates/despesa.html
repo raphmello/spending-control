@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block titulo %}{{ despesa.nome }} — Controle da Reforma{% endblock %}
+{% block conteudo %}
+
+<div class="cabecalho-pagina">
+  <div>
+    <h1>{{ despesa.nome }}</h1>
+    <p class="suave pequeno" style="margin:0">
+      {{ despesa.qtd_parcelas }}x · criada em {{ despesa.criado_em|data_br }}
+      {% if despesa.categoria %} · {{ despesa.categoria }}{% endif %}
+    </p>
+    {% if despesa.observacao %}<p class="pequeno" style="margin:6px 0 0">{{ despesa.observacao }}</p>{% endif %}
+  </div>
+  <form method="post" action="{{ url_for('remover_despesa', despesa_id=despesa.id) }}"
+        onsubmit="return confirm('Excluir a despesa “{{ despesa.nome }}” e todos os seus pagamentos?')">
+    <button class="secundario" type="submit">Excluir despesa</button>
+  </form>
+</div>
+
+<div class="grid-cards">
+  <div class="stat"><div class="rotulo">Valor total</div><div class="valor">{{ despesa.valor_total|brl }}</div></div>
+  <div class="stat verde"><div class="rotulo">Já abatido</div><div class="valor">{{ pago|brl }}</div></div>
+  <div class="stat vermelho"><div class="rotulo">Falta abater</div><div class="valor">{{ saldo|brl }}</div></div>
+</div>
+
+<div class="card">
+  <h2>Parcelas</h2>
+  <div class="tabela-scroll">
+  <table>
+    <thead>
+      <tr><th>#</th><th>Vencimento</th><th class="num">Valor</th><th class="num">Pago</th><th class="num">Falta</th><th>Status</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for pc in parcelas %}
+      {% set falta = pc.valor - pc.pago %}
+      <tr>
+        <td><strong>{{ pc.numero }}</strong></td>
+        <td>{{ pc.vencimento|data_br }}</td>
+        <td class="num">{{ pc.valor|brl }}</td>
+        <td class="num">{{ pc.pago|brl }}</td>
+        <td class="num">{{ falta|brl }}</td>
+        <td>
+          {% if falta <= 0 %}<span class="tag ok">Paga</span>
+          {% elif pc.pago > 0 %}<span class="tag parcial">Parcial</span>
+          {% else %}<span class="tag aberta">Em aberto</span>{% endif %}
+        </td>
+        <td>
+          <details class="editar">
+            <summary>editar</summary>
+            <form method="post" action="{{ url_for('editar_parcela', parcela_id=pc.id) }}" class="linha">
+              <input type="hidden" name="despesa_id" value="{{ despesa.id }}">
+              <div class="campo"><label>Valor</label>
+                <input name="valor" value="{{ '%.2f'|format(pc.valor / 100) }}" inputmode="decimal" required></div>
+              <div class="campo"><label>Vencimento</label>
+                <input name="vencimento" type="date" value="{{ pc.vencimento or '' }}"></div>
+              <button type="submit">Salvar</button>
+            </form>
+          </details>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Registrar pagamento</h2>
+  {% if pessoas_ativas %}
+  <form method="post" action="{{ url_for('novo_pagamento') }}" class="linha">
+    <input type="hidden" name="despesa_id" value="{{ despesa.id }}">
+
+    <div class="campo cresce">
+      <label for="parcela_id">Parcela *</label>
+      {% set ns = namespace(sel=false) %}
+      <select id="parcela_id" name="parcela_id" required onchange="sugerirValor()">
+        {% for pc in parcelas %}
+        <option value="{{ pc.id }}" data-falta="{{ '%.2f'|format((pc.valor - pc.pago) / 100) }}"
+          {% if (pc.valor - pc.pago) > 0 and not ns.sel %}selected{% set ns.sel = true %}{% endif %}>
+          Parcela {{ pc.numero }} — {{ pc.valor|brl }} (falta {{ (pc.valor - pc.pago)|brl }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="campo cresce">
+      <label for="pessoa_id">Quem pagou *</label>
+      <select id="pessoa_id" name="pessoa_id" required>
+        {% for p in pessoas_ativas %}<option value="{{ p.id }}">{{ p.nome }}</option>{% endfor %}
+      </select>
+    </div>
+
+    <div class="campo">
+      <label for="valor">Valor pago *</label>
+      <input id="valor" name="valor" required inputmode="decimal" placeholder="750,00" style="width:130px">
+    </div>
+
+    <div class="campo">
+      <label for="data">Data (opcional)</label>
+      <input id="data" name="data" type="date">
+    </div>
+
+    <div class="campo cresce">
+      <label for="observacao">Observação (opcional)</label>
+      <input id="observacao" name="observacao" placeholder="Pix, dinheiro...">
+    </div>
+
+    <button type="submit">Abater</button>
+  </form>
+  <script>
+    function sugerirValor() {
+      var sel = document.getElementById('parcela_id');
+      var falta = sel.options[sel.selectedIndex].dataset.falta;
+      document.getElementById('valor').placeholder = falta;
+    }
+    sugerirValor();
+  </script>
+  {% else %}
+    <p class="vazio">Cadastre pelo menos uma pessoa em <a href="{{ url_for('pessoas') }}">Pessoas</a> para lançar pagamentos.</p>
+  {% endif %}
+</div>
+
+<div class="duas-colunas">
+  <div class="card">
+    <h2>Por pessoa (nesta despesa)</h2>
+    {% if por_pessoa %}
+    <table>
+      <thead><tr><th>Pessoa</th><th class="num">Pagou</th><th class="num">% da despesa</th></tr></thead>
+      <tbody>
+        {% for p in por_pessoa %}
+        <tr>
+          <td><a href="{{ url_for('detalhe_pessoa', pessoa_id=p.id) }}">{{ p.nome }}</a></td>
+          <td class="num"><strong>{{ p.total|brl }}</strong></td>
+          <td class="num">{{ (0 if despesa.valor_total == 0 else p.total * 100 / despesa.valor_total)|round(1) }}%</td>
+        </tr>
+        {% endfor %}
+        <tr>
+          <td class="suave">Falta abater</td>
+          <td class="num suave">{{ saldo|brl }}</td>
+          <td class="num suave">{{ (0 if despesa.valor_total == 0 else saldo * 100 / despesa.valor_total)|round(1) }}%</td>
+        </tr>
+      </tbody>
+    </table>
+    {% else %}<p class="vazio">Nenhum pagamento lançado ainda.</p>{% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Histórico de pagamentos</h2>
+    {% if pagamentos %}
+    <div class="tabela-scroll">
+    <table>
+      <thead><tr><th>Data</th><th>Pessoa</th><th>Parc.</th><th class="num">Valor</th><th></th></tr></thead>
+      <tbody>
+        {% for pg in pagamentos %}
+        <tr>
+          <td>{{ pg.data|data_br }}</td>
+          <td>{{ pg.pessoa }}{% if pg.observacao %}<div class="pequeno suave">{{ pg.observacao }}</div>{% endif %}</td>
+          <td>{{ pg.parcela_numero }}</td>
+          <td class="num">{{ pg.valor|brl }}</td>
+          <td class="num">
+            <form method="post" action="{{ url_for('remover_pagamento', pagamento_id=pg.id) }}"
+                  onsubmit="return confirm('Remover este pagamento?')">
+              <button class="link" type="submit" title="Remover">✕</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}<p class="vazio">Nenhum pagamento lançado ainda.</p>{% endif %}
+  </div>
+</div>
+
+<p><a href="{{ url_for('index') }}">← voltar ao painel</a></p>
+
+{% endblock %}
