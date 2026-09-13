@@ -1,3 +1,7 @@
-reforma.db
+# o banco (reforma.db) e os backups são versionados; só arquivos temporários ficam de fora
+reforma.db-journal
+reforma.db-wal
+reforma.db-shm
+backups/*.tmp
 __pycache__/
 *.pyc
