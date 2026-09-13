@@ -1,4 +1,5 @@
-# o banco (reforma.db) e os backups são versionados; só arquivos temporários ficam de fora
+# o banco (reforma.db) fica só local; apenas as cópias em backups/ são versionadas
+reforma.db
 reforma.db-journal
 reforma.db-wal
 reforma.db-shm
