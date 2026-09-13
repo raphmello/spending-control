@@ -46,8 +46,16 @@
 </div>
 {% endif %}
 
-<div class="card">
+<div class="card" id="despesas">
   <h2>Despesas</h2>
+  {% if contagem.todas %}
+  <nav class="filtros">
+    <a href="{{ url_for('index') }}#despesas" class="{{ 'ativo' if not filtro }}">Todas <span class="qtd">{{ contagem.todas }}</span></a>
+    {% for chave, info in STATUS_DESPESA.items() %}
+    <a href="{{ url_for('index', status=chave) }}#despesas" class="{{ 'ativo' if filtro == chave }}">{{ info[0] }} <span class="qtd">{{ contagem[chave] }}</span></a>
+    {% endfor %}
+  </nav>
+  {% endif %}
   {% if despesas %}
   <div class="tabela-scroll">
   <table>
@@ -74,16 +82,15 @@
         <td class="num">{{ d.valor_total|brl }}</td>
         <td class="num">{{ d.pago|brl }}</td>
         <td class="num">{{ saldo|brl }}</td>
-        <td>
-          {% if saldo <= 0 %}<span class="tag ok">Quitada</span>
-          {% elif d.pago > 0 %}<span class="tag parcial">Parcial</span>
-          {% else %}<span class="tag aberta">Em aberto</span>{% endif %}
-        </td>
+        {% set info = STATUS_DESPESA[d|status_despesa] %}
+        <td><span class="tag {{ info[2] }}">{{ info[1] }}</span></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
+  {% elif filtro %}
+    <p class="vazio">Nenhuma despesa com esse status. <a href="{{ url_for('index') }}#despesas">Ver todas</a>.</p>
   {% else %}
     <p class="vazio">Nenhuma despesa ainda. Comece por <a href="{{ url_for('nova_despesa') }}">criar a primeira</a>.</p>
   {% endif %}

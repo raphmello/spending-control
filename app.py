@@ -67,8 +67,24 @@ def data_br(iso):
     return "/".join(reversed(partes)) if len(partes) == 3 else iso
 
 
+# status: (rótulo do filtro, rótulo da tag, classe css) — na ordem dos filtros do painel
+STATUS_DESPESA = {
+    "quitada": ("Quitadas", "Quitada", "ok"),
+    "parcial": ("Parcial", "Parcial", "parcial"),
+    "aberta": ("Em aberto", "Em aberto", "aberta"),
+}
+
+
+def status_despesa(despesa):
+    if despesa["valor_total"] - despesa["pago"] <= 0:
+        return "quitada"
+    return "parcial" if despesa["pago"] > 0 else "aberta"
+
+
 app.jinja_env.filters["brl"] = brl
 app.jinja_env.filters["data_br"] = data_br
+app.jinja_env.filters["status_despesa"] = status_despesa
+app.jinja_env.globals["STATUS_DESPESA"] = STATUS_DESPESA
 
 
 @app.after_request
@@ -92,10 +108,24 @@ def inject_globals():
 
 @app.route("/")
 def index():
+    despesas = db.listar_despesas()
+    contagem = {chave: 0 for chave in STATUS_DESPESA}
+    for d in despesas:
+        contagem[status_despesa(d)] += 1
+    contagem["todas"] = len(despesas)
+
+    filtro = request.args.get("status")
+    if filtro not in STATUS_DESPESA:
+        filtro = None
+    if filtro:
+        despesas = [d for d in despesas if status_despesa(d) == filtro]
+
     return render_template(
         "index.html",
         totais=db.totais_gerais(),
-        despesas=db.listar_despesas(),
+        despesas=despesas,
+        filtro=filtro,
+        contagem=contagem,
         por_pessoa=db.resumo_pessoas_geral(),
         saldos=db.saldos_entre_pessoas(),
     )

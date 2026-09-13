@@ -45,6 +45,7 @@ O navegador abre sozinho em <http://127.0.0.1:5000>. Para parar: `Ctrl+C` no ter
    - **Tela da despesa** — quanto cada pessoa pagou nela e quanto falta abater.
    - **Tela da pessoa** — total pago no geral e quebrado por despesa.
    - **Painel** — total da reforma, total pago, total a pagar e ranking por pessoa.
+     A lista de despesas pode ser filtrada por **Quitadas**, **Parcial** ou **Em aberto**.
 
 Valores aceitam `3000`, `3000.00` ou `3.000,00` — tanto faz.
 A data é opcional em todo pagamento.

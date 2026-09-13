@@ -99,3 +99,12 @@ button.link { background: none; border: none; color: var(--alerta); padding: 2px
 @media (max-width: 760px) { .duas-colunas { grid-template-columns: 1fr; } }
 details.editar summary { cursor: pointer; font-size: 12px; color: var(--suave); }
 details.editar form { margin-top: 8px; }
+
+.filtros { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.filtros a {
+  text-decoration: none; font-size: 13px; padding: 4px 12px; border-radius: 999px;
+  border: 1px solid var(--linha); color: var(--texto); background: #fff;
+}
+.filtros a:hover { border-color: var(--acento); }
+.filtros a.ativo { background: var(--acento); border-color: var(--acento); color: #fff; }
+.filtros .qtd { opacity: .7; margin-left: 2px; font-variant-numeric: tabular-nums; }
