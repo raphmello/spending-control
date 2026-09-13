@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block titulo %}Lixeira — Controle da Reforma{% endblock %}
+{% block conteudo %}
+
+<h1>Lixeira</h1>
+<p class="suave pequeno">Despesas excluídas. Elas não entram nos totais, mas parcelas e pagamentos continuam guardados.</p>
+
+<div class="card">
+  {% if despesas %}
+  <div class="tabela-scroll">
+  <table>
+    <thead>
+      <tr><th>Despesa</th><th>Excluída em</th><th class="num">Total</th><th class="num">Pago</th><th class="num"></th></tr>
+    </thead>
+    <tbody>
+      {% for d in despesas %}
+      <tr>
+        <td>
+          <a href="{{ url_for('detalhe_despesa', despesa_id=d.id) }}"><strong>{{ d.nome }}</strong></a>
+          {% if d.categoria %}<div class="pequeno suave">{{ d.categoria }}</div>{% endif %}
+        </td>
+        <td>{{ d.excluido_em|data_br }}</td>
+        <td class="num">{{ d.valor_total|brl }}</td>
+        <td class="num">{{ d.pago|brl }}</td>
+        <td class="num">
+          <form method="post" action="{{ url_for('restaurar_despesa', despesa_id=d.id) }}">
+            <button class="secundario" type="submit">Restaurar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="vazio">A lixeira está vazia.</p>
+  {% endif %}
+</div>
+
+<p><a href="{{ url_for('index') }}">← voltar ao painel</a></p>
+
+{% endblock %}

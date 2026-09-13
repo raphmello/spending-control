@@ -13,6 +13,7 @@ from threading import Timer
 
 from flask import (Flask, flash, redirect, render_template, request, url_for)
 
+import backup
 import db
 
 app = Flask(__name__)
@@ -63,6 +64,16 @@ def data_br(iso):
 
 app.jinja_env.filters["brl"] = brl
 app.jinja_env.filters["data_br"] = data_br
+
+
+@app.after_request
+def backup_apos_alteracao(response):
+    if request.method == "POST":
+        try:
+            backup.fazer_backup()
+        except Exception as e:  # backup nunca pode derrubar o app
+            print(f"[backup] falhou: {e}")
+    return response
 
 
 @app.context_processor
@@ -148,8 +159,20 @@ def detalhe_despesa(despesa_id):
 @app.route("/despesas/<int:despesa_id>/excluir", methods=["POST"])
 def remover_despesa(despesa_id):
     db.excluir_despesa(despesa_id)
-    flash("Despesa excluída.", "ok")
+    flash("Despesa movida para a lixeira. Dá para restaurar em Lixeira.", "ok")
     return redirect(url_for("index"))
+
+
+@app.route("/despesas/<int:despesa_id>/restaurar", methods=["POST"])
+def restaurar_despesa(despesa_id):
+    db.restaurar_despesa(despesa_id)
+    flash("Despesa restaurada.", "ok")
+    return redirect(url_for("detalhe_despesa", despesa_id=despesa_id))
+
+
+@app.route("/lixeira")
+def lixeira():
+    return render_template("lixeira.html", despesas=db.listar_despesas(na_lixeira=True))
 
 
 @app.route("/parcelas/<int:parcela_id>/editar", methods=["POST"])
@@ -255,6 +278,7 @@ def abrir_navegador():
 
 
 if __name__ == "__main__":
+    backup.fazer_backup()  # antes do init_db, para guardar o banco antes de qualquer migração
     db.init_db()
     if os.environ.get("WERKZEUG_RUN_MAIN") != "true" and os.environ.get("REFORMA_NO_BROWSER") != "1":
         Timer(1.0, abrir_navegador).start()

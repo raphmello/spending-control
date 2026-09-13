@@ -11,11 +11,21 @@
     </p>
     {% if despesa.observacao %}<p class="pequeno" style="margin:6px 0 0">{{ despesa.observacao }}</p>{% endif %}
   </div>
+  {% if despesa.excluido_em %}
+  <form method="post" action="{{ url_for('restaurar_despesa', despesa_id=despesa.id) }}">
+    <button type="submit">Restaurar despesa</button>
+  </form>
+  {% else %}
   <form method="post" action="{{ url_for('remover_despesa', despesa_id=despesa.id) }}"
-        onsubmit="return confirm('Excluir a despesa “{{ despesa.nome }}” e todos os seus pagamentos?')">
+        onsubmit="return confirm('Mover a despesa “{{ despesa.nome }}” para a lixeira? Dá para restaurar depois.')">
     <button class="secundario" type="submit">Excluir despesa</button>
   </form>
+  {% endif %}
 </div>
+
+{% if despesa.excluido_em %}
+<div class="flash erro">Esta despesa está na lixeira desde {{ despesa.excluido_em|data_br }} e não entra nos totais.</div>
+{% endif %}
 
 <div class="grid-cards">
   <div class="stat"><div class="rotulo">Valor total</div><div class="valor">{{ despesa.valor_total|brl }}</div></div>
@@ -66,7 +76,9 @@
 
 <div class="card">
   <h2>Registrar pagamento</h2>
-  {% if pessoas_ativas %}
+  {% if despesa.excluido_em %}
+    <p class="vazio">Restaure a despesa para lançar pagamentos.</p>
+  {% elif pessoas_ativas %}
   <form method="post" action="{{ url_for('novo_pagamento') }}" class="linha">
     <input type="hidden" name="despesa_id" value="{{ despesa.id }}">
 

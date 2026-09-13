@@ -15,6 +15,7 @@
       <a href="{{ url_for('index') }}">Painel</a>
       <a href="{{ url_for('nova_despesa') }}">Nova despesa</a>
       <a href="{{ url_for('pessoas') }}">Pessoas</a>
+      <a href="{{ url_for('lixeira') }}">Lixeira</a>
     </nav>
   </div>
 </header>
@@ -33,6 +34,6 @@
   {% block conteudo %}{% endblock %}
 </main>
 
-<footer class="wrap rodape">Dados salvos localmente em <code>reforma.db</code></footer>
+<footer class="wrap rodape">Dados salvos localmente em <code>reforma.db</code> · backups em <code>backups/</code></footer>
 </body>
 </html>

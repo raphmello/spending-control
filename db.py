@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS despesa (
     observacao    TEXT,
     valor_total   INTEGER NOT NULL,          -- centavos
     qtd_parcelas  INTEGER NOT NULL,
-    criado_em     TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    criado_em     TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    excluido_em   TEXT                       -- preenchido = está na lixeira
 );
 
 CREATE TABLE IF NOT EXISTS parcela (
@@ -78,6 +79,10 @@ def get_db():
 def init_db():
     with get_db() as conn:
         conn.executescript(SCHEMA)
+        # migração: bancos criados antes da lixeira não têm a coluna excluido_em
+        colunas = [r["name"] for r in conn.execute("PRAGMA table_info(despesa)")]
+        if "excluido_em" not in colunas:
+            conn.execute("ALTER TABLE despesa ADD COLUMN excluido_em TEXT")
 
 
 # --------------------------------------------------------------------------
@@ -147,8 +152,18 @@ def criar_despesa(nome, valor_total, qtd_parcelas, categoria=None,
 
 
 def excluir_despesa(despesa_id):
+    """Move a despesa para a lixeira (não apaga nada)."""
     with get_db() as conn:
-        conn.execute("DELETE FROM despesa WHERE id = ?", (despesa_id,))
+        conn.execute(
+            "UPDATE despesa SET excluido_em = datetime('now','localtime') "
+            "WHERE id = ? AND excluido_em IS NULL",
+            (despesa_id,),
+        )
+
+
+def restaurar_despesa(despesa_id):
+    with get_db() as conn:
+        conn.execute("UPDATE despesa SET excluido_em = NULL WHERE id = ?", (despesa_id,))
 
 
 def atualizar_parcela(parcela_id, valor, vencimento):
@@ -174,11 +189,13 @@ def obter_despesa(despesa_id):
         return conn.execute("SELECT * FROM despesa WHERE id = ?", (despesa_id,)).fetchone()
 
 
-def listar_despesas():
-    """Despesas com total pago e saldo."""
+def listar_despesas(na_lixeira=False):
+    """Despesas com total pago e saldo (ativas, ou só as da lixeira)."""
+    filtro = "d.excluido_em IS NOT NULL" if na_lixeira else "d.excluido_em IS NULL"
+    ordem = "d.excluido_em DESC" if na_lixeira else "d.criado_em DESC"
     with get_db() as conn:
         return conn.execute(
-            """
+            f"""
             SELECT d.*,
                    COALESCE((
                        SELECT SUM(pg.valor)
@@ -187,7 +204,8 @@ def listar_despesas():
                         WHERE pc.despesa_id = d.id
                    ), 0) AS pago
               FROM despesa d
-             ORDER BY d.criado_em DESC, d.id DESC
+             WHERE {filtro}
+             ORDER BY {ordem}, d.id DESC
             """
         ).fetchall()
 
@@ -270,7 +288,13 @@ def resumo_pessoas_geral():
                    COALESCE(SUM(pg.valor), 0) AS total,
                    COUNT(pg.id) AS qtd
               FROM pessoa ps
-              LEFT JOIN pagamento pg ON pg.pessoa_id = ps.id
+              LEFT JOIN (
+                    SELECT p.id, p.pessoa_id, p.valor
+                      FROM pagamento p
+                      JOIN parcela pc ON pc.id = p.parcela_id
+                      JOIN despesa d  ON d.id = pc.despesa_id
+                     WHERE d.excluido_em IS NULL
+                   ) pg ON pg.pessoa_id = ps.id
              GROUP BY ps.id, ps.nome
              ORDER BY total DESC, ps.nome COLLATE NOCASE
             """
@@ -279,9 +303,16 @@ def resumo_pessoas_geral():
 
 def totais_gerais():
     with get_db() as conn:
-        total = conn.execute("SELECT COALESCE(SUM(valor_total),0) FROM despesa").fetchone()[0]
-        pago = conn.execute("SELECT COALESCE(SUM(valor),0) FROM pagamento").fetchone()[0]
-        qtd = conn.execute("SELECT COUNT(*) FROM despesa").fetchone()[0]
+        total, qtd = conn.execute(
+            "SELECT COALESCE(SUM(valor_total),0), COUNT(*) FROM despesa WHERE excluido_em IS NULL"
+        ).fetchone()
+        pago = conn.execute(
+            """SELECT COALESCE(SUM(pg.valor),0)
+                 FROM pagamento pg
+                 JOIN parcela pc ON pc.id = pg.parcela_id
+                 JOIN despesa d  ON d.id = pc.despesa_id
+                WHERE d.excluido_em IS NULL"""
+        ).fetchone()[0]
         return {"total": total, "pago": pago, "saldo": total - pago, "qtd_despesas": qtd}
 
 
@@ -294,7 +325,7 @@ def extrato_pessoa(pessoa_id):
               FROM pagamento pg
               JOIN parcela pc ON pc.id = pg.parcela_id
               JOIN despesa d  ON d.id = pc.despesa_id
-             WHERE pg.pessoa_id = ?
+             WHERE pg.pessoa_id = ? AND d.excluido_em IS NULL
              GROUP BY d.id, d.nome
              ORDER BY total DESC
             """,
@@ -306,7 +337,7 @@ def extrato_pessoa(pessoa_id):
               FROM pagamento pg
               JOIN parcela pc ON pc.id = pg.parcela_id
               JOIN despesa d  ON d.id = pc.despesa_id
-             WHERE pg.pessoa_id = ?
+             WHERE pg.pessoa_id = ? AND d.excluido_em IS NULL
              ORDER BY COALESCE(pg.data, pg.criado_em) DESC, pg.id DESC
             """,
             (pessoa_id,),

@@ -54,6 +54,8 @@ A data é opcional em todo pagamento.
 reforma/
 ├── app.py            # rotas Flask e formatação (R$, datas)
 ├── db.py             # schema e consultas SQLite
+├── backup.py         # backup automático (cópia datada + commit no git + OneDrive)
+├── backups/          # cópias datadas do banco (versionadas no git)
 ├── templates/        # telas (Jinja2)
 ├── static/style.css  # estilo
 ├── requirements.txt
@@ -62,10 +64,31 @@ reforma/
 
 Valores são guardados em **centavos (inteiro)**, então não existe erro de arredondamento.
 
+## Backup automático
+
+Toda vez que o app abre e depois de cada alteração, uma cópia do banco é salva em
+`backups/reforma-AAAA-MM-DD.db` (uma por dia) e **commitada no git** — então cada
+versão fica no histórico, mesmo que a cópia do dia seja sobrescrita.
+Se nada mudou desde o último backup, nada é feito.
+
+Se existir OneDrive na máquina, a cópia também vai para
+`OneDrive\Backups\spend-control` (proteção contra perda do disco).
+
+- **Restaurar**: com o app parado, copie o backup desejado por cima do `reforma.db`.
+  Versões antigas do mesmo dia: `git log -- backups/` e `git show <commit>:backups/<arquivo> > reforma.db`.
+- **Outra pasta de nuvem**: `REFORMA_BACKUP_NUVEM=D:\MeusBackups`; para desativar: `REFORMA_BACKUP_NUVEM=0`.
+- Não coloque a pasta do projeto dentro do OneDrive/Dropbox: sincronizar o `reforma.db`
+  com o app aberto pode corrompê-lo. Os backups podem ir, o banco vivo não.
+
+## Lixeira
+
+Excluir uma despesa só a manda para a **Lixeira** (menu no topo): ela sai dos totais,
+mas as parcelas e pagamentos continuam guardados e dá para restaurar a qualquer momento.
+
 ## Dicas
 
-- **Backup**: copie o arquivo `reforma.db`.
-- **Recomeçar do zero**: apague o `reforma.db` e rode de novo.
+- **Recomeçar do zero**: renomeie o `reforma.db` (ex.: `reforma-antigo.db`) e rode de novo.
+  Evite apagar — os backups continuam em `backups/`, mas é melhor não arriscar.
 - **Mudar a porta**: `PORT=5050 python app.py`.
 - **Não abrir o navegador sozinho**: `REFORMA_NO_BROWSER=1 python app.py`.
 - Uma pessoa que já tem pagamentos não pode ser excluída — **desative** que ela some dos
