@@ -8,7 +8,20 @@
     <p class="suave pequeno" style="margin:0">
       {{ despesa.qtd_parcelas }}x · criada em {{ despesa.criado_em|data_br }}
       {% if despesa.categoria %} · {{ despesa.categoria }}{% endif %}
+      · {% if despesa.pagador %}💳 cartão de <strong>{{ despesa.pagador }}</strong>{% else %}sem cartão{% endif %}
     </p>
+    <details class="editar" style="margin-top:4px">
+      <summary>alterar quem passou o cartão</summary>
+      <form method="post" action="{{ url_for('definir_pagador', despesa_id=despesa.id) }}" class="linha">
+        <select name="pagador_id">
+          <option value="">— ninguém / cada um paga direto —</option>
+          {% for p in todas_pessoas %}
+          <option value="{{ p.id }}" {% if p.id == despesa.pagador_id %}selected{% endif %}>{{ p.nome }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Salvar</button>
+      </form>
+    </details>
     {% if despesa.observacao %}<p class="pequeno" style="margin:6px 0 0">{{ despesa.observacao }}</p>{% endif %}
   </div>
   {% if despesa.excluido_em %}
@@ -119,6 +132,11 @@
 
     <button type="submit">Abater</button>
   </form>
+  {% if despesa.pagador %}
+  <p class="pequeno suave" style="margin:10px 0 0">
+    💳 Compra no cartão de {{ despesa.pagador }}: o que outra pessoa abater aqui vira dívida com {{ despesa.pagador }}.
+  </p>
+  {% endif %}
   <script>
     function sugerirValor() {
       var sel = document.getElementById('parcela_id');
@@ -166,7 +184,9 @@
         {% for pg in pagamentos %}
         <tr>
           <td>{{ pg.data|data_br }}</td>
-          <td>{{ pg.pessoa }}{% if pg.observacao %}<div class="pequeno suave">{{ pg.observacao }}</div>{% endif %}</td>
+          <td>{{ pg.pessoa }}
+            {% if despesa.pagador_id and pg.pessoa_id != despesa.pagador_id %}<div class="pequeno suave">→ deve a {{ despesa.pagador }}</div>{% endif %}
+            {% if pg.observacao %}<div class="pequeno suave">{{ pg.observacao }}</div>{% endif %}</td>
           <td>{{ pg.parcela_numero }}</td>
           <td class="num">{{ pg.valor|brl }}</td>
           <td class="num">

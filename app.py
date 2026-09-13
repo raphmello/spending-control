@@ -55,6 +55,11 @@ def brl(centavos):
     return f"{sinal}R$ {inteiro:,.0f}".replace(",", ".") + f",{cents:02d}"
 
 
+def parse_id_opcional(texto):
+    texto = (texto or "").strip()
+    return int(texto) if texto else None
+
+
 def data_br(iso):
     if not iso:
         return "—"
@@ -92,6 +97,7 @@ def index():
         totais=db.totais_gerais(),
         despesas=db.listar_despesas(),
         por_pessoa=db.resumo_pessoas_geral(),
+        saldos=db.saldos_entre_pessoas(),
     )
 
 
@@ -129,6 +135,7 @@ def nova_despesa():
                 categoria=(request.form.get("categoria") or "").strip() or None,
                 observacao=(request.form.get("observacao") or "").strip() or None,
                 valores_parcelas=valores,
+                pagador_id=parse_id_opcional(request.form.get("pagador_id")),
             )
             flash(f"Despesa “{nome}” criada.", "ok")
             return redirect(url_for("detalhe_despesa", despesa_id=despesa_id))
@@ -153,7 +160,18 @@ def detalhe_despesa(despesa_id):
         saldo=despesa["valor_total"] - pago,
         pagamentos=db.listar_pagamentos_despesa(despesa_id),
         por_pessoa=db.resumo_pessoas_despesa(despesa_id),
+        todas_pessoas=db.listar_pessoas(),
     )
+
+
+@app.route("/despesas/<int:despesa_id>/pagador", methods=["POST"])
+def definir_pagador(despesa_id):
+    try:
+        db.definir_pagador(despesa_id, parse_id_opcional(request.form.get("pagador_id")))
+        flash("Cartão da compra atualizado.", "ok")
+    except ValueError as e:
+        flash(f"Erro: {e}", "erro")
+    return redirect(url_for("detalhe_despesa", despesa_id=despesa_id))
 
 
 @app.route("/despesas/<int:despesa_id>/excluir", methods=["POST"])
@@ -254,7 +272,8 @@ def remover_pessoa(pessoa_id):
     if db.excluir_pessoa(pessoa_id):
         flash("Pessoa excluída.", "ok")
     else:
-        flash("Não dá para excluir: essa pessoa já tem pagamentos lançados. Desative-a.", "erro")
+        flash("Não dá para excluir: essa pessoa já tem pagamentos, compras no cartão ou acertos. "
+              "Desative-a.", "erro")
     return redirect(url_for("pessoas"))
 
 
@@ -270,7 +289,48 @@ def detalhe_pessoa(pessoa_id):
         por_despesa=por_despesa,
         lancamentos=lancamentos,
         total=total,
+        saldos=db.saldos_entre_pessoas(pessoa_id),
     )
+
+
+# --------------------------------------------------------------------------
+# Acertos (quem deve para quem)
+# --------------------------------------------------------------------------
+
+@app.route("/acertos", methods=["GET", "POST"])
+def acertos():
+    if request.method == "POST":
+        try:
+            de = int(request.form.get("de_pessoa_id"))
+            para = int(request.form.get("para_pessoa_id"))
+            if de == para:
+                raise ValueError("escolha duas pessoas diferentes")
+            db.criar_acerto(
+                de_pessoa_id=de,
+                para_pessoa_id=para,
+                valor=parse_money(request.form.get("valor")),
+                data=(request.form.get("data") or "").strip() or None,
+                observacao=(request.form.get("observacao") or "").strip() or None,
+            )
+            flash("Acerto registrado.", "ok")
+        except (ValueError, TypeError) as e:
+            flash(f"Erro ao registrar acerto: {e}", "erro")
+        return redirect(url_for("acertos"))
+    return render_template(
+        "acertos.html",
+        saldos=db.saldos_entre_pessoas(),
+        origens=db.dividas_por_despesa(),
+        lista=db.listar_acertos(),
+        todas_pessoas=db.listar_pessoas(),
+        sugestao=request.args,
+    )
+
+
+@app.route("/acertos/<int:acerto_id>/excluir", methods=["POST"])
+def remover_acerto(acerto_id):
+    db.excluir_acerto(acerto_id)
+    flash("Acerto removido.", "ok")
+    return redirect(url_for("acertos"))
 
 
 def abrir_navegador():

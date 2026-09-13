@@ -24,6 +24,28 @@
   </div>
 </div>
 
+{% set pendentes = saldos | selectattr('valor') | list %}
+{% if saldos %}
+<div class="card">
+  <h2>Quem deve para quem</h2>
+  {% if pendentes %}
+  <table>
+    <tbody>
+      {% for s in pendentes %}
+      <tr>
+        <td><strong>{{ s.devedor }}</strong> deve para <strong>{{ s.credor }}</strong></td>
+        <td class="num"><strong>{{ s.valor|brl }}</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="vazio">Todo mundo está quite. 🎉</p>
+  {% endif %}
+  <p class="pequeno" style="margin:10px 0 0"><a href="{{ url_for('acertos') }}">Ver detalhes e registrar acertos →</a></p>
+</div>
+{% endif %}
+
 <div class="card">
   <h2>Despesas</h2>
   {% if despesas %}
@@ -45,7 +67,7 @@
       <tr>
         <td>
           <a href="{{ url_for('detalhe_despesa', despesa_id=d.id) }}"><strong>{{ d.nome }}</strong></a>
-          {% if d.categoria %}<div class="pequeno suave">{{ d.categoria }}</div>{% endif %}
+          {% if d.categoria or d.pagador %}<div class="pequeno suave">{{ d.categoria or '' }}{% if d.categoria and d.pagador %} · {% endif %}{% if d.pagador %}💳 {{ d.pagador }}{% endif %}</div>{% endif %}
           <div class="barra"><i style="width: {{ (100 if d.valor_total == 0 else (d.pago * 100 / d.valor_total))|round(1) }}%"></i></div>
         </td>
         <td>{{ d.qtd_parcelas }}x</td>

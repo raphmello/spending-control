@@ -40,7 +40,8 @@ O navegador abre sozinho em <http://127.0.0.1:5000>. Para parar: `Ctrl+C` no ter
 3. Na tela da despesa, use **Registrar pagamento**: escolha a parcela, quem pagou,
    o valor abatido e (opcional) a data e uma observação.
    Ex.: Raphael R$ 750,00 + Elaine R$ 750,00 na parcela 1 → parcela fica **Paga**.
-4. Os totais aparecem em três lugares:
+4. Se a compra foi no cartão de alguém, veja em **Acertos** quem deve para quem.
+5. Os totais aparecem em três lugares:
    - **Tela da despesa** — quanto cada pessoa pagou nela e quanto falta abater.
    - **Tela da pessoa** — total pago no geral e quebrado por despesa.
    - **Painel** — total da reforma, total pago, total a pagar e ranking por pessoa.
@@ -63,6 +64,17 @@ reforma/
 ```
 
 Valores são guardados em **centavos (inteiro)**, então não existe erro de arredondamento.
+
+## Compras no cartão e acertos
+
+Ao criar uma despesa, informe **quem passou o cartão** (dá para alterar depois na tela da despesa).
+Quem abater parcelas dessa compra passa a **dever esse valor ao dono do cartão**.
+Abatimentos do próprio dono do cartão, ou de despesas sem cartão, não geram dívida.
+
+A tela **Acertos** mostra o saldo já simplificado de cada par de pessoas:
+se Raphael deve R$ 1.000 para Elaine e Elaine deve R$ 800 para Raphael, aparece só
+*Raphael deve R$ 200 para Elaine*. Quando alguém transferir o dinheiro, registre um
+**acerto** (de quem, para quem, valor) e o saldo diminui. Despesas na lixeira não geram dívida.
 
 ## Backup automático
 

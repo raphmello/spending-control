@@ -15,6 +15,26 @@
   </div>
 </div>
 
+{% if saldos %}
+<div class="card">
+  <h2>Acertos com outras pessoas</h2>
+  <table>
+    <tbody>
+      {% for s in saldos %}
+      <tr>
+        <td>
+          {% if s.valor == 0 %}Quite com <strong>{{ s.credor if s.devedor_id == pessoa.id else s.devedor }}</strong>
+          {% else %}<strong>{{ s.devedor }}</strong> deve para <strong>{{ s.credor }}</strong>{% endif %}
+        </td>
+        <td class="num"><strong>{{ s.valor|brl }}</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="pequeno" style="margin:10px 0 0"><a href="{{ url_for('acertos') }}">Ver detalhes em Acertos →</a></p>
+</div>
+{% endif %}
+
 <div class="card">
   <h2>Pago por despesa</h2>
   {% if por_despesa %}

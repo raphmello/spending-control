@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block titulo %}Acertos — Controle da Reforma{% endblock %}
+{% block conteudo %}
+
+<h1>Acertos</h1>
+<p class="suave pequeno">
+  Quem abate parcela de uma compra no cartão de outra pessoa fica devendo esse valor a ela.
+  As dívidas em sentidos opostos se compensam, e os acertos registrados abatem o que falta.
+</p>
+
+<div class="card">
+  <h2>Quem deve para quem</h2>
+  {% if saldos %}
+  <div class="tabela-scroll">
+  <table>
+    <thead>
+      <tr><th>Saldo</th><th class="num">Valor</th><th>Como chegou nesse valor</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for s in saldos %}
+      <tr>
+        <td>
+          {% if s.valor == 0 %}<strong>{{ s.devedor }}</strong> e <strong>{{ s.credor }}</strong> estão quites
+          {% else %}<strong>{{ s.devedor }}</strong> deve para <strong>{{ s.credor }}</strong>{% endif %}
+        </td>
+        <td class="num"><strong>{{ s.valor|brl }}</strong></td>
+        <td class="pequeno suave">
+          {{ s.devedor }} abateu {{ s.compras_devedor|brl }} no cartão de {{ s.credor }}<br>
+          − {{ s.credor }} abateu {{ s.compras_credor|brl }} no cartão de {{ s.devedor }}<br>
+          − {{ s.devedor }} já transferiu {{ s.acertos_devedor|brl }} para {{ s.credor }}
+          {% if s.acertos_credor %}<br>+ {{ s.credor }} já transferiu {{ s.acertos_credor|brl }} para {{ s.devedor }}{% endif %}
+        </td>
+        <td class="num">
+          {% if s.valor > 0 %}
+          <a href="{{ url_for('acertos', de=s.devedor_id, para=s.credor_id, valor='%.2f'|format(s.valor / 100)) }}#registrar">
+            <button class="secundario" type="button">Acertar</button>
+          </a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="vazio">Ninguém deve nada a ninguém. Para gerar dívidas, informe quem passou o cartão na tela da despesa.</p>
+  {% endif %}
+</div>
+
+<div class="card" id="registrar">
+  <h2>Registrar acerto</h2>
+  {% if todas_pessoas|length >= 2 %}
+  <form method="post" class="linha">
+    <div class="campo cresce">
+      <label for="de_pessoa_id">Quem pagou *</label>
+      <select id="de_pessoa_id" name="de_pessoa_id" required>
+        {% for p in todas_pessoas %}
+        <option value="{{ p.id }}" {% if sugestao.de == p.id|string %}selected{% endif %}>{{ p.nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo cresce">
+      <label for="para_pessoa_id">Para quem *</label>
+      <select id="para_pessoa_id" name="para_pessoa_id" required>
+        {% for p in todas_pessoas %}
+        <option value="{{ p.id }}" {% if (sugestao.para == p.id|string) or (not sugestao.para and loop.index == 2) %}selected{% endif %}>{{ p.nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="campo">
+      <label for="valor">Valor *</label>
+      <input id="valor" name="valor" required inputmode="decimal" placeholder="200,00"
+             value="{{ sugestao.valor or '' }}" style="width:130px">
+    </div>
+    <div class="campo">
+      <label for="data">Data (opcional)</label>
+      <input id="data" name="data" type="date">
+    </div>
+    <div class="campo cresce">
+      <label for="observacao">Observação (opcional)</label>
+      <input id="observacao" name="observacao" placeholder="Pix, dinheiro...">
+    </div>
+    <button type="submit">Registrar</button>
+  </form>
+  {% else %}
+    <p class="vazio">Cadastre pelo menos duas pessoas em <a href="{{ url_for('pessoas') }}">Pessoas</a>.</p>
+  {% endif %}
+</div>
+
+<div class="duas-colunas">
+  <div class="card">
+    <h2>De onde vêm as dívidas</h2>
+    {% if origens %}
+    <div class="tabela-scroll">
+    <table>
+      <thead><tr><th>Quem deve</th><th>Para</th><th>Despesa</th><th class="num">Valor</th></tr></thead>
+      <tbody>
+        {% for o in origens %}
+        <tr>
+          <td>{{ o.devedor }}</td>
+          <td>{{ o.credor }}</td>
+          <td><a href="{{ url_for('detalhe_despesa', despesa_id=o.despesa_id) }}">{{ o.despesa }}</a></td>
+          <td class="num">{{ o.total|brl }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}<p class="vazio">Nenhum abatimento em cartão de outra pessoa.</p>{% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Histórico de acertos</h2>
+    {% if lista %}
+    <div class="tabela-scroll">
+    <table>
+      <thead><tr><th>Data</th><th>De → Para</th><th class="num">Valor</th><th></th></tr></thead>
+      <tbody>
+        {% for a in lista %}
+        <tr>
+          <td>{{ (a.data or a.criado_em)|data_br }}</td>
+          <td>{{ a.de_pessoa }} → {{ a.para_pessoa }}{% if a.observacao %}<div class="pequeno suave">{{ a.observacao }}</div>{% endif %}</td>
+          <td class="num">{{ a.valor|brl }}</td>
+          <td class="num">
+            <form method="post" action="{{ url_for('remover_acerto', acerto_id=a.id) }}"
+                  onsubmit="return confirm('Remover este acerto?')">
+              <button class="link" type="submit" title="Remover">✕</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}<p class="vazio">Nenhum acerto registrado ainda.</p>{% endif %}
+  </div>
+</div>
+
+<p><a href="{{ url_for('index') }}">← voltar ao painel</a></p>
+
+{% endblock %}

@@ -33,6 +33,15 @@
       <span class="pequeno suave">Se preenchido, a diferença de arredondamento vai para a última parcela. Você também pode editar cada parcela depois.</span>
     </div>
 
+    <div class="campo" style="margin-bottom:14px">
+      <label for="pagador_id">Quem passou o cartão (opcional)</label>
+      <select id="pagador_id" name="pagador_id">
+        <option value="">— ninguém / cada um paga direto —</option>
+        {% for p in pessoas_ativas %}<option value="{{ p.id }}">{{ p.nome }}</option>{% endfor %}
+      </select>
+      <span class="pequeno suave">Se alguém passou o cartão, quem abater parcelas dessa compra fica devendo para essa pessoa (veja em Acertos).</span>
+    </div>
+
     <div class="campo" style="margin-bottom:18px">
       <label for="observacao">Observação (opcional)</label>
       <textarea id="observacao" name="observacao" rows="2"></textarea>

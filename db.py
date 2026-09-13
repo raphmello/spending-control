@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS despesa (
     valor_total   INTEGER NOT NULL,          -- centavos
     qtd_parcelas  INTEGER NOT NULL,
     criado_em     TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-    excluido_em   TEXT                       -- preenchido = está na lixeira
+    excluido_em   TEXT,                      -- preenchido = está na lixeira
+    pagador_id    INTEGER REFERENCES pessoa(id)  -- quem passou o cartão (opcional)
 );
 
 CREATE TABLE IF NOT EXISTS parcela (
@@ -48,6 +49,19 @@ CREATE TABLE IF NOT EXISTS pagamento (
     data        TEXT,                        -- YYYY-MM-DD (opcional)
     observacao  TEXT,
     criado_em   TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+-- Transferência entre pessoas para quitar o que uma deve à outra.
+CREATE TABLE IF NOT EXISTS acerto (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    de_pessoa_id    INTEGER NOT NULL REFERENCES pessoa(id),
+    para_pessoa_id  INTEGER NOT NULL REFERENCES pessoa(id),
+    valor           INTEGER NOT NULL,        -- centavos
+    data            TEXT,                    -- YYYY-MM-DD (opcional)
+    observacao      TEXT,
+    criado_em       TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    CHECK (de_pessoa_id <> para_pessoa_id),
+    CHECK (valor > 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_parcela_despesa   ON parcela(despesa_id);
@@ -79,10 +93,12 @@ def get_db():
 def init_db():
     with get_db() as conn:
         conn.executescript(SCHEMA)
-        # migração: bancos criados antes da lixeira não têm a coluna excluido_em
+        # migrações de bancos criados antes destas colunas existirem
         colunas = [r["name"] for r in conn.execute("PRAGMA table_info(despesa)")]
         if "excluido_em" not in colunas:
             conn.execute("ALTER TABLE despesa ADD COLUMN excluido_em TEXT")
+        if "pagador_id" not in colunas:
+            conn.execute("ALTER TABLE despesa ADD COLUMN pagador_id INTEGER REFERENCES pessoa(id)")
 
 
 # --------------------------------------------------------------------------
@@ -109,10 +125,13 @@ def alternar_pessoa(pessoa_id):
 
 
 def excluir_pessoa(pessoa_id):
-    """Só exclui se a pessoa não tiver pagamentos lançados."""
+    """Só exclui se a pessoa não tiver pagamentos, compras no cartão ou acertos."""
     with get_db() as conn:
         usada = conn.execute(
-            "SELECT COUNT(*) FROM pagamento WHERE pessoa_id = ?", (pessoa_id,)
+            """SELECT (SELECT COUNT(*) FROM pagamento WHERE pessoa_id = :id)
+                    + (SELECT COUNT(*) FROM despesa WHERE pagador_id = :id)
+                    + (SELECT COUNT(*) FROM acerto WHERE de_pessoa_id = :id OR para_pessoa_id = :id)""",
+            {"id": pessoa_id},
         ).fetchone()[0]
         if usada:
             return False
@@ -133,12 +152,12 @@ def dividir_parcelas(valor_total, qtd):
 
 
 def criar_despesa(nome, valor_total, qtd_parcelas, categoria=None,
-                  observacao=None, valores_parcelas=None, vencimentos=None):
+                  observacao=None, valores_parcelas=None, vencimentos=None, pagador_id=None):
     with get_db() as conn:
         cur = conn.execute(
-            """INSERT INTO despesa (nome, categoria, observacao, valor_total, qtd_parcelas)
-               VALUES (?, ?, ?, ?, ?)""",
-            (nome.strip(), categoria, observacao, valor_total, qtd_parcelas),
+            """INSERT INTO despesa (nome, categoria, observacao, valor_total, qtd_parcelas, pagador_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (nome.strip(), categoria, observacao, valor_total, qtd_parcelas, pagador_id),
         )
         despesa_id = cur.lastrowid
         valores = valores_parcelas or dividir_parcelas(valor_total, qtd_parcelas)
@@ -159,6 +178,11 @@ def excluir_despesa(despesa_id):
             "WHERE id = ? AND excluido_em IS NULL",
             (despesa_id,),
         )
+
+
+def definir_pagador(despesa_id, pagador_id):
+    with get_db() as conn:
+        conn.execute("UPDATE despesa SET pagador_id = ? WHERE id = ?", (pagador_id, despesa_id))
 
 
 def restaurar_despesa(despesa_id):
@@ -186,7 +210,13 @@ def atualizar_parcela(parcela_id, valor, vencimento):
 
 def obter_despesa(despesa_id):
     with get_db() as conn:
-        return conn.execute("SELECT * FROM despesa WHERE id = ?", (despesa_id,)).fetchone()
+        return conn.execute(
+            """SELECT d.*, ps.nome AS pagador
+                 FROM despesa d
+                 LEFT JOIN pessoa ps ON ps.id = d.pagador_id
+                WHERE d.id = ?""",
+            (despesa_id,),
+        ).fetchone()
 
 
 def listar_despesas(na_lixeira=False):
@@ -202,8 +232,10 @@ def listar_despesas(na_lixeira=False):
                          FROM pagamento pg
                          JOIN parcela pc ON pc.id = pg.parcela_id
                         WHERE pc.despesa_id = d.id
-                   ), 0) AS pago
+                   ), 0) AS pago,
+                   ps.nome AS pagador
               FROM despesa d
+              LEFT JOIN pessoa ps ON ps.id = d.pagador_id
              WHERE {filtro}
              ORDER BY {ordem}, d.id DESC
             """
@@ -344,3 +376,120 @@ def extrato_pessoa(pessoa_id):
         ).fetchall()
         total = sum(r["total"] for r in por_despesa)
         return pessoa, por_despesa, lancamentos, total
+
+
+# --------------------------------------------------------------------------
+# Acertos: quem deve para quem
+#
+# Quem abate parcela de uma compra feita no cartão de outra pessoa passa a
+# dever esse valor ao dono do cartão. Acertos (transferências entre pessoas)
+# abatem essa dívida. Para cada par de pessoas o saldo é simplificado:
+# se A deve 1000 a B e B deve 800 a A, o resultado é "A deve 200 a B".
+# Despesas na lixeira não geram dívida.
+# --------------------------------------------------------------------------
+
+def criar_acerto(de_pessoa_id, para_pessoa_id, valor, data=None, observacao=None):
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO acerto (de_pessoa_id, para_pessoa_id, valor, data, observacao)
+               VALUES (?, ?, ?, ?, ?)""",
+            (de_pessoa_id, para_pessoa_id, valor, data or None, observacao or None),
+        )
+
+
+def excluir_acerto(acerto_id):
+    with get_db() as conn:
+        conn.execute("DELETE FROM acerto WHERE id = ?", (acerto_id,))
+
+
+def listar_acertos():
+    with get_db() as conn:
+        return conn.execute(
+            """
+            SELECT a.*, de.nome AS de_pessoa, para.nome AS para_pessoa
+              FROM acerto a
+              JOIN pessoa de   ON de.id = a.de_pessoa_id
+              JOIN pessoa para ON para.id = a.para_pessoa_id
+             ORDER BY COALESCE(a.data, a.criado_em) DESC, a.id DESC
+            """
+        ).fetchall()
+
+
+def dividas_por_despesa():
+    """De onde vem cada dívida: quanto cada pessoa abateu no cartão de outra, por despesa."""
+    with get_db() as conn:
+        return conn.execute(
+            """
+            SELECT dev.nome AS devedor, cred.nome AS credor,
+                   d.id AS despesa_id, d.nome AS despesa, SUM(pg.valor) AS total
+              FROM pagamento pg
+              JOIN parcela pc  ON pc.id = pg.parcela_id
+              JOIN despesa d   ON d.id = pc.despesa_id
+              JOIN pessoa dev  ON dev.id = pg.pessoa_id
+              JOIN pessoa cred ON cred.id = d.pagador_id
+             WHERE d.excluido_em IS NULL AND d.pagador_id <> pg.pessoa_id
+             GROUP BY pg.pessoa_id, d.pagador_id, d.id
+             ORDER BY dev.nome, cred.nome, total DESC
+            """
+        ).fetchall()
+
+
+def saldos_entre_pessoas(pessoa_id=None):
+    """Saldo simplificado de cada par de pessoas com movimento.
+
+    Cada item traz devedor/credor (nomes e ids), `valor` (o que o devedor ainda
+    deve; 0 = quites) e os componentes do cálculo:
+      compras_devedor  abatido pelo devedor em compras no cartão do credor
+      compras_credor   abatido pelo credor em compras no cartão do devedor
+      acertos_devedor  já transferido do devedor para o credor
+      acertos_credor   já transferido do credor para o devedor
+    valor = compras_devedor - compras_credor - acertos_devedor + acertos_credor
+    """
+    with get_db() as conn:
+        nomes = {r["id"]: r["nome"] for r in conn.execute("SELECT id, nome FROM pessoa")}
+        compras = conn.execute(
+            """
+            SELECT pg.pessoa_id AS de, d.pagador_id AS para, SUM(pg.valor) AS total
+              FROM pagamento pg
+              JOIN parcela pc ON pc.id = pg.parcela_id
+              JOIN despesa d  ON d.id = pc.despesa_id
+             WHERE d.excluido_em IS NULL
+               AND d.pagador_id IS NOT NULL
+               AND d.pagador_id <> pg.pessoa_id
+             GROUP BY pg.pessoa_id, d.pagador_id
+            """
+        ).fetchall()
+        acertos = conn.execute(
+            """SELECT de_pessoa_id AS de, para_pessoa_id AS para, SUM(valor) AS total
+                 FROM acerto GROUP BY de_pessoa_id, para_pessoa_id"""
+        ).fetchall()
+
+    # pares[(a, b)] com a < b; mov["compras"][x] = quanto x deve ao outro por compras
+    pares = {}
+
+    def par(de, para):
+        chave = (min(de, para), max(de, para))
+        return pares.setdefault(chave, {"compras": {de: 0, para: 0}, "acertos": {de: 0, para: 0}})
+
+    for r in compras:
+        par(r["de"], r["para"])["compras"][r["de"]] += r["total"]
+    for r in acertos:
+        par(r["de"], r["para"])["acertos"][r["de"]] += r["total"]
+
+    saldos = []
+    for (a, b), mov in pares.items():
+        if pessoa_id is not None and pessoa_id not in (a, b):
+            continue
+        a_deve_b = mov["compras"][a] - mov["compras"][b] - mov["acertos"][a] + mov["acertos"][b]
+        devedor, credor = (a, b) if a_deve_b >= 0 else (b, a)
+        saldos.append({
+            "devedor_id": devedor, "devedor": nomes[devedor],
+            "credor_id": credor, "credor": nomes[credor],
+            "valor": abs(a_deve_b),
+            "compras_devedor": mov["compras"][devedor],
+            "compras_credor": mov["compras"][credor],
+            "acertos_devedor": mov["acertos"][devedor],
+            "acertos_credor": mov["acertos"][credor],
+        })
+    saldos.sort(key=lambda s: (-s["valor"], s["devedor"], s["credor"]))
+    return saldos
