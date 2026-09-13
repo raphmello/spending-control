@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block titulo %}Pendências — Controle da Reforma{% endblock %}
+{% block conteudo %}
+{% from "_pendencias.html" import tabela_parcelas %}
+
+<h1>Pendências</h1>
+<p class="suave pequeno">
+  Parcelas com vencimento que ainda não foram totalmente abatidas, e acertos em aberto entre as pessoas.
+</p>
+
+<div class="card">
+  <h2>Vencidas</h2>
+  {% if pend.vencidas %}
+    {{ tabela_parcelas(pend.vencidas) }}
+  {% else %}
+    <p class="vazio">Nenhuma parcela vencida sem abatimento.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Vencem nos próximos {{ dias_aviso }} dias</h2>
+  {% if pend.proximas %}
+    {{ tabela_parcelas(pend.proximas) }}
+  {% else %}
+    <p class="vazio">Nada vencendo nos próximos {{ dias_aviso }} dias.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Acertos pendentes</h2>
+  {% if acertos_pendentes %}
+  <table>
+    <tbody>
+      {% for s in acertos_pendentes %}
+      <tr>
+        <td><strong>{{ s.devedor }}</strong> deve para <strong>{{ s.credor }}</strong></td>
+        <td class="num"><strong>{{ s.valor|brl }}</strong></td>
+        <td class="num">
+          <a href="{{ url_for('acertos', de=s.devedor_id, para=s.credor_id, valor='%.2f'|format(s.valor / 100)) }}#registrar">
+            <button class="secundario" type="button">Acertar</button>
+          </a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="vazio">Ninguém deve nada a ninguém.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Mais adiante</h2>
+  {% if pend.futuras %}
+  <details>
+    <summary class="pequeno">ver {{ pend.futuras|length }} parcela(s) com vencimento depois de {{ dias_aviso }} dias</summary>
+    {{ tabela_parcelas(pend.futuras) }}
+  </details>
+  {% else %}
+    <p class="vazio">Nenhuma parcela futura a abater.</p>
+  {% endif %}
+</div>
+
+<p><a href="{{ url_for('index') }}">← voltar ao painel</a></p>
+
+{% endblock %}

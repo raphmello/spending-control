@@ -19,6 +19,12 @@
           <option value="{{ p.id }}" {% if p.id == despesa.pagador_id %}selected{% endif %}>{{ p.nome }}</option>
           {% endfor %}
         </select>
+        {% if parcelas | selectattr('vencimento', 'none') | list %}
+        <div class="campo">
+          <label for="primeiro_vencimento">Vencimento da 1ª parcela (obrigatório para cartão)</label>
+          <input id="primeiro_vencimento" name="primeiro_vencimento" type="date">
+        </div>
+        {% endif %}
         <button type="submit">Salvar</button>
       </form>
     </details>
@@ -58,7 +64,7 @@
       {% set falta = pc.valor - pc.pago %}
       <tr>
         <td><strong>{{ pc.numero }}</strong></td>
-        <td>{{ pc.vencimento|data_br }}</td>
+        <td>{{ pc.vencimento|data_br }}{% if falta > 0 and pc.vencimento and pc.vencimento < hoje %} <span class="tag vencida">vencida</span>{% endif %}</td>
         <td class="num">{{ pc.valor|brl }}</td>
         <td class="num">{{ pc.pago|brl }}</td>
         <td class="num">{{ falta|brl }}</td>
@@ -74,8 +80,11 @@
               <input type="hidden" name="despesa_id" value="{{ despesa.id }}">
               <div class="campo"><label>Valor</label>
                 <input name="valor" value="{{ '%.2f'|format(pc.valor / 100) }}" inputmode="decimal" required></div>
-              <div class="campo"><label>Vencimento</label>
-                <input name="vencimento" type="date" value="{{ pc.vencimento or '' }}"></div>
+              <div class="campo"><label>Vencimento{% if despesa.pagador_id %} *{% endif %}</label>
+                <input name="vencimento" type="date" value="{{ pc.vencimento or '' }}" {% if despesa.pagador_id %}required{% endif %}></div>
+              {% if not loop.last %}
+              <label class="checkbox"><input type="checkbox" name="ajustar_seguintes" value="1"> ajustar as parcelas seguintes</label>
+              {% endif %}
               <button type="submit">Salvar</button>
             </form>
           </details>
@@ -87,7 +96,7 @@
   </div>
 </div>
 
-<div class="card">
+<div class="card" id="abater">
   <h2>Registrar pagamento</h2>
   {% if despesa.excluido_em %}
     <p class="vazio">Restaure a despesa para lançar pagamentos.</p>
@@ -98,10 +107,11 @@
     <div class="campo cresce">
       <label for="parcela_id">Parcela *</label>
       {% set ns = namespace(sel=false) %}
+      {% set escolhida = request.args.get('parcela', 0)|int %}
       <select id="parcela_id" name="parcela_id" required onchange="sugerirValor()">
         {% for pc in parcelas %}
         <option value="{{ pc.id }}" data-falta="{{ '%.2f'|format((pc.valor - pc.pago) / 100) }}"
-          {% if (pc.valor - pc.pago) > 0 and not ns.sel %}selected{% set ns.sel = true %}{% endif %}>
+          {% if (escolhida and pc.id == escolhida) or (not escolhida and (pc.valor - pc.pago) > 0 and not ns.sel) %}selected{% set ns.sel = true %}{% endif %}>
           Parcela {{ pc.numero }} — {{ pc.valor|brl }} (falta {{ (pc.valor - pc.pago)|brl }})
         </option>
         {% endfor %}

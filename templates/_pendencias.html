@@ -1,0 +1,38 @@
+{# Tabela de parcelas a abater (itens de calcular_pendencias em app.py). #}
+{% macro tabela_parcelas(itens) %}
+<div class="tabela-scroll">
+<table>
+  <thead>
+    <tr><th>Vencimento</th><th>Despesa</th><th>Parcela</th><th class="num">Falta abater</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for p in itens %}
+    <tr>
+      <td>
+        {{ p.vencimento|data_br }}
+        <div>
+          {% if p.dias < 0 %}<span class="tag vencida">vencida há {{ -p.dias }} dia{{ 's' if p.dias < -1 }}</span>
+          {% elif p.dias == 0 %}<span class="tag parcial">vence hoje</span>
+          {% else %}<span class="tag aberta">em {{ p.dias }} dia{{ 's' if p.dias > 1 }}</span>{% endif %}
+        </div>
+      </td>
+      <td>
+        <a href="{{ url_for('detalhe_despesa', despesa_id=p.despesa_id) }}"><strong>{{ p.despesa }}</strong></a>
+        {% if p.pagador %}<div class="pequeno suave">💳 {{ p.pagador }}</div>{% endif %}
+      </td>
+      <td>{{ p.numero }}/{{ p.qtd_parcelas }}</td>
+      <td class="num">
+        <strong>{{ p.falta|brl }}</strong>
+        {% if p.pago %}<div class="pequeno suave">de {{ p.valor|brl }}</div>{% endif %}
+      </td>
+      <td class="num">
+        <a href="{{ url_for('detalhe_despesa', despesa_id=p.despesa_id, parcela=p.id) }}#abater">
+          <button class="secundario" type="button">Abater</button>
+        </a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}

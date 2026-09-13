@@ -42,6 +42,12 @@
       <span class="pequeno suave">Se alguém passou o cartão, quem abater parcelas dessa compra fica devendo para essa pessoa (veja em Acertos).</span>
     </div>
 
+    <div class="campo" style="margin-bottom:14px">
+      <label for="primeiro_vencimento">Vencimento da 1ª parcela <span id="venc-obrigatorio" hidden>*</span></label>
+      <input id="primeiro_vencimento" name="primeiro_vencimento" type="date" style="max-width:200px">
+      <span class="pequeno suave">Obrigatório para compras no cartão. As próximas parcelas vencem no mesmo dia dos meses seguintes; dá para ajustar cada uma depois.</span>
+    </div>
+
     <div class="campo" style="margin-bottom:18px">
       <label for="observacao">Observação (opcional)</label>
       <textarea id="observacao" name="observacao" rows="2"></textarea>
@@ -51,5 +57,19 @@
     <a href="{{ url_for('index') }}"><button type="button" class="secundario">Cancelar</button></a>
   </form>
 </div>
+
+<script>
+  (function () {
+    var pagador = document.getElementById('pagador_id');
+    var venc = document.getElementById('primeiro_vencimento');
+    var marca = document.getElementById('venc-obrigatorio');
+    function atualizar() {
+      venc.required = !!pagador.value;
+      marca.hidden = !pagador.value;
+    }
+    pagador.addEventListener('change', atualizar);
+    atualizar();
+  })();
+</script>
 
 {% endblock %}

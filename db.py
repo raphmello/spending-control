@@ -4,12 +4,17 @@ Todos os valores monetarios sao armazenados em CENTAVOS (INTEGER),
 para evitar erros de arredondamento de ponto flutuante.
 """
 
+import calendar
 import os
 import sqlite3
 from contextlib import contextmanager
+from datetime import date
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("REFORMA_DB", os.path.join(BASE_DIR, "reforma.db"))
+
+# compras no cartão antigas, sem vencimento, recebem esta data na 1ª parcela (migração v1)
+VENCIMENTO_INICIAL_MIGRACAO = date(2026, 9, 10)
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -37,7 +42,7 @@ CREATE TABLE IF NOT EXISTS parcela (
     despesa_id  INTEGER NOT NULL REFERENCES despesa(id) ON DELETE CASCADE,
     numero      INTEGER NOT NULL,
     valor       INTEGER NOT NULL,            -- centavos
-    vencimento  TEXT,                        -- YYYY-MM-DD (opcional)
+    vencimento  TEXT,                        -- YYYY-MM-DD (obrigatório em compras no cartão)
     UNIQUE (despesa_id, numero)
 );
 
@@ -100,6 +105,12 @@ def init_db():
         if "pagador_id" not in colunas:
             conn.execute("ALTER TABLE despesa ADD COLUMN pagador_id INTEGER REFERENCES pessoa(id)")
 
+        # v1: compras no cartão passam a exigir vencimento; as antigas sem data recebem
+        # VENCIMENTO_INICIAL_MIGRACAO na 1ª parcela (e os meses seguintes nas demais)
+        if conn.execute("PRAGMA user_version").fetchone()[0] < 1:
+            _preencher_vencimentos_vazios(conn, VENCIMENTO_INICIAL_MIGRACAO)
+            conn.execute("PRAGMA user_version = 1")
+
 
 # --------------------------------------------------------------------------
 # Pessoas
@@ -151,6 +162,40 @@ def dividir_parcelas(valor_total, qtd):
     return valores
 
 
+def somar_meses(data, meses):
+    """Mesmo dia `meses` meses depois; dia 31 vira o último dia de meses mais curtos."""
+    total = data.month - 1 + meses
+    ano, mes = data.year + total // 12, total % 12 + 1
+    return date(ano, mes, min(data.day, calendar.monthrange(ano, mes)[1]))
+
+
+def gerar_vencimentos(primeiro, qtd):
+    """{número da parcela: 'AAAA-MM-DD'}, mês a mês a partir do vencimento da 1ª parcela."""
+    return {i: somar_meses(primeiro, i - 1).isoformat() for i in range(1, qtd + 1)}
+
+
+def _preencher_vencimentos_vazios(conn, primeiro, despesa_id=None):
+    """Preenche parcelas sem vencimento (de uma despesa, ou de todas as compras no cartão),
+    tratando `primeiro` como o vencimento da parcela 1."""
+    if despesa_id is None:
+        filtro, params = "d.pagador_id IS NOT NULL", ()
+    else:
+        filtro, params = "d.id = ?", (despesa_id,)
+    vazias = conn.execute(
+        f"""SELECT pc.id, pc.numero
+              FROM parcela pc
+              JOIN despesa d ON d.id = pc.despesa_id
+             WHERE pc.vencimento IS NULL AND {filtro}""",
+        params,
+    ).fetchall()
+    for pc in vazias:
+        conn.execute(
+            "UPDATE parcela SET vencimento = ? WHERE id = ?",
+            (somar_meses(primeiro, pc["numero"] - 1).isoformat(), pc["id"]),
+        )
+    return len(vazias)
+
+
 def criar_despesa(nome, valor_total, qtd_parcelas, categoria=None,
                   observacao=None, valores_parcelas=None, vencimentos=None, pagador_id=None):
     with get_db() as conn:
@@ -180,8 +225,20 @@ def excluir_despesa(despesa_id):
         )
 
 
-def definir_pagador(despesa_id, pagador_id):
+def definir_pagador(despesa_id, pagador_id, primeiro_vencimento=None):
+    """Define quem passou o cartão. Compras no cartão exigem vencimento em todas as
+    parcelas: as que estiverem sem data são geradas a partir de `primeiro_vencimento`."""
     with get_db() as conn:
+        if pagador_id:
+            sem_data = conn.execute(
+                "SELECT COUNT(*) FROM parcela WHERE despesa_id = ? AND vencimento IS NULL",
+                (despesa_id,),
+            ).fetchone()[0]
+            if sem_data:
+                if not primeiro_vencimento:
+                    raise ValueError("esta despesa tem parcelas sem vencimento: "
+                                     "informe o vencimento da 1ª parcela")
+                _preencher_vencimentos_vazios(conn, primeiro_vencimento, despesa_id=despesa_id)
         conn.execute("UPDATE despesa SET pagador_id = ? WHERE id = ?", (pagador_id, despesa_id))
 
 
@@ -190,16 +247,33 @@ def restaurar_despesa(despesa_id):
         conn.execute("UPDATE despesa SET excluido_em = NULL WHERE id = ?", (despesa_id,))
 
 
-def atualizar_parcela(parcela_id, valor, vencimento):
-    """Atualiza o valor/vencimento de uma parcela e sincroniza o total da despesa."""
+def atualizar_parcela(parcela_id, valor, vencimento, ajustar_seguintes=False):
+    """Atualiza o valor/vencimento de uma parcela e sincroniza o total da despesa.
+
+    Com `ajustar_seguintes`, as parcelas de número maior passam a vencer mês a mês
+    a partir do novo vencimento (AAAA-MM-DD).
+    """
     with get_db() as conn:
-        row = conn.execute("SELECT despesa_id FROM parcela WHERE id = ?", (parcela_id,)).fetchone()
+        row = conn.execute(
+            "SELECT despesa_id, numero FROM parcela WHERE id = ?", (parcela_id,)
+        ).fetchone()
         if not row:
             return
         conn.execute(
             "UPDATE parcela SET valor = ?, vencimento = ? WHERE id = ?",
             (valor, vencimento, parcela_id),
         )
+        if ajustar_seguintes and vencimento:
+            base = date.fromisoformat(vencimento)
+            seguintes = conn.execute(
+                "SELECT id, numero FROM parcela WHERE despesa_id = ? AND numero > ?",
+                (row["despesa_id"], row["numero"]),
+            ).fetchall()
+            for pc in seguintes:
+                conn.execute(
+                    "UPDATE parcela SET vencimento = ? WHERE id = ?",
+                    (somar_meses(base, pc["numero"] - row["numero"]).isoformat(), pc["id"]),
+                )
         conn.execute(
             """UPDATE despesa
                   SET valor_total = (SELECT COALESCE(SUM(valor),0) FROM parcela WHERE despesa_id = ?)
@@ -253,6 +327,28 @@ def listar_parcelas(despesa_id):
              ORDER BY pc.numero
             """,
             (despesa_id,),
+        ).fetchall()
+
+
+def parcelas_pendentes():
+    """Parcelas com vencimento e valor ainda não totalmente abatido (fora da lixeira),
+    da mais antiga para a mais nova."""
+    with get_db() as conn:
+        return conn.execute(
+            """
+            SELECT * FROM (
+                SELECT pc.id, pc.numero, pc.valor, pc.vencimento,
+                       d.id AS despesa_id, d.nome AS despesa, d.qtd_parcelas,
+                       ps.nome AS pagador,
+                       COALESCE((SELECT SUM(valor) FROM pagamento WHERE parcela_id = pc.id), 0) AS pago
+                  FROM parcela pc
+                  JOIN despesa d     ON d.id = pc.despesa_id
+                  LEFT JOIN pessoa ps ON ps.id = d.pagador_id
+                 WHERE d.excluido_em IS NULL AND pc.vencimento IS NOT NULL
+            )
+             WHERE pago < valor
+             ORDER BY vencimento, despesa, numero
+            """
         ).fetchall()
 
 

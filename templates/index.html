@@ -24,6 +24,20 @@
   </div>
 </div>
 
+{% from "_pendencias.html" import tabela_parcelas %}
+{% set urgentes = pend.vencidas + pend.proximas %}
+{% if urgentes or pend.futuras %}
+<div class="card">
+  <h2>Parcelas a abater</h2>
+  {% if urgentes %}
+    {{ tabela_parcelas(urgentes) }}
+  {% else %}
+    <p class="vazio">Nada vencido nem vencendo nos próximos {{ dias_aviso }} dias. ✓</p>
+  {% endif %}
+  <p class="pequeno" style="margin:10px 0 0"><a href="{{ url_for('pendencias') }}">Ver todas as pendências →</a></p>
+</div>
+{% endif %}
+
 {% set pendentes = saldos | selectattr('valor') | list %}
 {% if saldos %}
 <div class="card">

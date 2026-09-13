@@ -13,6 +13,7 @@
     <a class="marca" href="{{ url_for('index') }}">🧱 Controle da Reforma</a>
     <nav>
       <a href="{{ url_for('index') }}">Painel</a>
+      <a href="{{ url_for('pendencias') }}">Pendências{% if qtd_pendencias %} <span class="badge">{{ qtd_pendencias }}</span>{% endif %}</a>
       <a href="{{ url_for('nova_despesa') }}">Nova despesa</a>
       <a href="{{ url_for('pessoas') }}">Pessoas</a>
       <a href="{{ url_for('acertos') }}">Acertos</a>

@@ -77,6 +77,21 @@ se Raphael deve R$ 1.000 para Elaine e Elaine deve R$ 800 para Raphael, aparece 
 *Raphael deve R$ 200 para Elaine*. Quando alguém transferir o dinheiro, registre um
 **acerto** (de quem, para quem, valor) e o saldo diminui. Despesas na lixeira não geram dívida.
 
+## Vencimentos e pendências
+
+Compras no cartão exigem a **data de vencimento da 1ª parcela**; as seguintes são geradas
+automaticamente, mês a mês, no mesmo dia (dia 31 vira o último dia dos meses mais curtos).
+Cada data pode ser editada na tela da despesa — marque *ajustar as parcelas seguintes* para
+recalcular as próximas a partir da data editada.
+
+O menu **Pendências** (com contador) e o Painel avisam:
+- parcelas **vencidas** ou que vencem nos **próximos 7 dias** e ainda não foram totalmente
+  abatidas — o botão *Abater* abre a despesa com a parcela já selecionada;
+- **acertos pendentes** entre as pessoas.
+
+Compras no cartão cadastradas antes desta versão, sem datas, receberam **10/09/2026** na
+1ª parcela (e os meses seguintes nas demais). Ajuste conforme a fatura real.
+
 ## Backup automático
 
 Toda vez que o app abre e depois de cada alteração, uma cópia do banco é salva em

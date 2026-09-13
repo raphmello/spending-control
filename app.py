@@ -9,6 +9,7 @@ Uso:
 import os
 import re
 import webbrowser
+from datetime import date
 from threading import Timer
 
 from flask import (Flask, flash, redirect, render_template, request, url_for)
@@ -60,6 +61,17 @@ def parse_id_opcional(texto):
     return int(texto) if texto else None
 
 
+def parse_data(texto, campo="data"):
+    """'AAAA-MM-DD' (como vem do <input type=date>) -> date, ou None se vazio."""
+    texto = (texto or "").strip()
+    if not texto:
+        return None
+    try:
+        return date.fromisoformat(texto)
+    except ValueError:
+        raise ValueError(f"{campo} inválida") from None
+
+
 def data_br(iso):
     if not iso:
         return "—"
@@ -97,9 +109,40 @@ def backup_apos_alteracao(response):
     return response
 
 
+DIAS_AVISO = 7  # parcelas que vencem em até N dias já aparecem como pendência
+
+
+def calcular_pendencias():
+    """Parcelas a abater agrupadas por urgência: vencidas, próximas (até DIAS_AVISO) e futuras."""
+    hoje = date.today()
+    grupos = {"vencidas": [], "proximas": [], "futuras": []}
+    for pc in db.parcelas_pendentes():
+        try:
+            dias = (date.fromisoformat(pc["vencimento"]) - hoje).days
+        except ValueError:
+            continue
+        item = dict(pc, dias=dias, falta=pc["valor"] - pc["pago"])
+        if dias < 0:
+            grupos["vencidas"].append(item)
+        elif dias <= DIAS_AVISO:
+            grupos["proximas"].append(item)
+        else:
+            grupos["futuras"].append(item)
+    return grupos
+
+
 @app.context_processor
 def inject_globals():
-    return {"pessoas_ativas": db.listar_pessoas(somente_ativas=True)}
+    pend = calcular_pendencias()
+    acertos_pendentes = [s for s in db.saldos_entre_pessoas() if s["valor"] > 0]
+    return {
+        "pessoas_ativas": db.listar_pessoas(somente_ativas=True),
+        "hoje": date.today().isoformat(),
+        "pend": pend,
+        "acertos_pendentes": acertos_pendentes,
+        "dias_aviso": DIAS_AVISO,
+        "qtd_pendencias": len(pend["vencidas"]) + len(pend["proximas"]) + len(acertos_pendentes),
+    }
 
 
 # --------------------------------------------------------------------------
@@ -158,6 +201,11 @@ def nova_despesa():
                 if valores[-1] <= 0:
                     raise ValueError("valor da parcela incompatível com o valor total")
 
+            pagador_id = parse_id_opcional(request.form.get("pagador_id"))
+            primeiro_venc = parse_data(request.form.get("primeiro_vencimento"), "data de vencimento")
+            if pagador_id and not primeiro_venc:
+                raise ValueError("compras no cartão precisam da data de vencimento da 1ª parcela")
+
             despesa_id = db.criar_despesa(
                 nome=nome,
                 valor_total=valor_total,
@@ -165,7 +213,8 @@ def nova_despesa():
                 categoria=(request.form.get("categoria") or "").strip() or None,
                 observacao=(request.form.get("observacao") or "").strip() or None,
                 valores_parcelas=valores,
-                pagador_id=parse_id_opcional(request.form.get("pagador_id")),
+                vencimentos=db.gerar_vencimentos(primeiro_venc, qtd) if primeiro_venc else None,
+                pagador_id=pagador_id,
             )
             flash(f"Despesa “{nome}” criada.", "ok")
             return redirect(url_for("detalhe_despesa", despesa_id=despesa_id))
@@ -197,7 +246,11 @@ def detalhe_despesa(despesa_id):
 @app.route("/despesas/<int:despesa_id>/pagador", methods=["POST"])
 def definir_pagador(despesa_id):
     try:
-        db.definir_pagador(despesa_id, parse_id_opcional(request.form.get("pagador_id")))
+        db.definir_pagador(
+            despesa_id,
+            parse_id_opcional(request.form.get("pagador_id")),
+            parse_data(request.form.get("primeiro_vencimento"), "data de vencimento"),
+        )
         flash("Cartão da compra atualizado.", "ok")
     except ValueError as e:
         flash(f"Erro: {e}", "erro")
@@ -223,14 +276,26 @@ def lixeira():
     return render_template("lixeira.html", despesas=db.listar_despesas(na_lixeira=True))
 
 
+@app.route("/pendencias")
+def pendencias():
+    # parcelas e acertos pendentes já vêm do context processor (pend, acertos_pendentes)
+    return render_template("pendencias.html")
+
+
 @app.route("/parcelas/<int:parcela_id>/editar", methods=["POST"])
 def editar_parcela(parcela_id):
     despesa_id = int(request.form.get("despesa_id"))
     try:
         valor = parse_money(request.form.get("valor"))
-        venc = (request.form.get("vencimento") or "").strip() or None
-        db.atualizar_parcela(parcela_id, valor, venc)
-        flash("Parcela atualizada.", "ok")
+        venc = parse_data(request.form.get("vencimento"), "data de vencimento")
+        despesa = db.obter_despesa(despesa_id)
+        if not venc and despesa and despesa["pagador_id"]:
+            raise ValueError("compras no cartão precisam de data de vencimento em todas as parcelas")
+        ajustar = bool(request.form.get("ajustar_seguintes")) and venc is not None
+        db.atualizar_parcela(parcela_id, valor, venc.isoformat() if venc else None,
+                             ajustar_seguintes=ajustar)
+        flash("Parcela atualizada e parcelas seguintes reajustadas." if ajustar
+              else "Parcela atualizada.", "ok")
     except ValueError as e:
         flash(f"Erro: {e}", "erro")
     return redirect(url_for("detalhe_despesa", despesa_id=despesa_id))
