@@ -434,6 +434,7 @@ def abrir_navegador():
 
 if __name__ == "__main__":
     backup.fazer_backup()  # antes do init_db, para guardar o banco antes de qualquer migração
+    backup.enviar_para_github()  # envia backups que ficaram sem push (ex.: app fechado sem internet)
     db.init_db()
     if os.environ.get("WERKZEUG_RUN_MAIN") != "true" and os.environ.get("REFORMA_NO_BROWSER") != "1":
         Timer(1.0, abrir_navegador).start()

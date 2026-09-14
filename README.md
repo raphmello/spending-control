@@ -95,9 +95,17 @@ Compras no cartão cadastradas antes desta versão, sem datas, receberam **10/09
 ## Backup automático
 
 Toda vez que o app abre e depois de cada alteração, uma cópia do banco é salva em
-`backups/reforma-AAAA-MM-DD.db` (uma por dia) e **commitada no git** — então cada
-versão fica no histórico, mesmo que a cópia do dia seja sobrescrita.
-Se nada mudou desde o último backup, nada é feito.
+`backups/reforma-AAAA-MM-DD.db` (uma por dia), **commitada na branch `main`** e
+**enviada ao GitHub automaticamente** — então cada versão fica no histórico, mesmo
+que a cópia do dia seja sobrescrita. Se nada mudou desde o último backup, nada é feito.
+
+- Se você estiver em outra branch, o backup é commitado nela **e** também direto na `main`
+  (sem trocar de branch); só a `main` é enviada.
+- O envio roda em segundo plano e usa a credencial do git já salva. Sem internet, ou se a
+  `main` do GitHub tiver commits que não estão na sua máquina, aparece um aviso no terminal
+  e o envio é tentado de novo no próximo backup ou quando o app abrir.
+- O push envia a `main` inteira: commits de código que estiverem só na sua `main` local vão junto.
+- Para desativar o envio: `REFORMA_BACKUP_PUSH=0`.
 
 Se existir OneDrive na máquina, a cópia também vai para
 `OneDrive\Backups\spend-control` (proteção contra perda do disco).
